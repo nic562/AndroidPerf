@@ -1,14 +1,12 @@
 import os
-from logging import getLogger
 import types
 
 from adb import adb_commands
 from adb import sign_pythonrsa
 from adb.adb_protocol import InvalidResponseError, InvalidCommandError
 
-from .my_adb import AdbInterface
-
-logging = getLogger(__name__)
+from .base_adb import AdbInterface
+from .log import default as logging
 
 
 class ReadConnectError(Exception):
@@ -98,10 +96,10 @@ class PyAdb(AdbInterface):
         logging.debug(f'adb shell(Streaming) {cmd}')
         return self.adb.StreamingShell(cmd)
 
-    def add_app(self, apk_path):
+    def install_app(self, apk_path):
         return self.adb.Install(apk_path, grant_permissions=True, timeout_ms=1200000)
 
-    def remove_app(self, app_bundle: str):
+    def uninstall_app(self, app_bundle: str):
         return self.adb.Uninstall(app_bundle)
 
     def close(self):
