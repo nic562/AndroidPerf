@@ -5,7 +5,7 @@ import types
 
 class AdbInterface(metaclass=abc.ABCMeta):
     # 基础ADB通讯接口抽象
-    _sdk_version: int
+    _sdk_version: int = None
 
     @abc.abstractmethod
     def run_shell(self, cmd: str, clean_wrap=False) -> str:
@@ -50,8 +50,11 @@ class AdbInterface(metaclass=abc.ABCMeta):
     def get_device_serial(self) -> str:
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def devices(self):
+        raise NotImplementedError
+
     def get_sdk_version(self) -> int:
         if not self._sdk_version:
             self._sdk_version = int(self.run_shell('getprop ro.build.version.sdk'))
         return self._sdk_version
-

@@ -42,26 +42,35 @@ class PyAdb(AdbInterface):
             return cls.connect_dev(adb_key_path, serial=serial)
         return dev
 
-    def __init__(self, serial=None, adb_key_path='~/.android/adbkey'):
+    def __init__(self, serial=None, adb_key_path='~/.android/adbkey', auto_connect=True):
         try:
             os.system('adb kill-server')
         except:
             pass
         self.serial = serial
         self.adb_key_path = adb_key_path
-        self.adb = self.open_connect()
+        self._adb = None
+        if auto_connect:
+            self.open_connect()
+
+    @property
+    def adb(self):
+        if not self._adb:
+            raise ValueError('Please connect device first!')
+        return self._adb
 
     def get_device_serial(self) -> str:
         return self.serial
 
     def open_connect(self) -> adb_commands.AdbCommands:
-        return self.connect_dev(self.adb_key_path, serial=self.serial)
+        self._adb = self.connect_dev(self.adb_key_path, serial=self.serial)
+        return self._adb
 
     def _on_read_error(self, e, cmd, clean_wrap, reconnect_on_err):
         if reconnect_on_err:
             logging.warning('trying to reconnect adb!')
             self.adb.Close()
-            self.adb = self.open_connect()
+            self.open_connect()
             return self.run_shell(cmd, clean_wrap, reconnect_on_err)
         else:
             raise ReadConnectError(e)
@@ -103,10 +112,24 @@ class PyAdb(AdbInterface):
         return self.adb.Uninstall(app_bundle)
 
     def close(self):
-        self.adb.Close()
+        try:
+            self.adb.Close()
+        except:
+            pass
 
     def push_file(self, local_path: str, device_path: str):
         return self.adb.Push(local_path, device_path)
 
     def pull_file(self, device_path: str, local_path: str):
         return self.adb.Pull(device_path, local_path)
+
+    def devices(self):
+        # 这里有坑，已经连接了设备的话，执行Devices 方法会报错，必须先断开连接
+        logging.warning('listing devices need to disconnect current device!')
+        self.close()
+        return [(x.serial_number, '') for x in self._devices()]
+
+    @staticmethod
+    def _devices():
+        # 请在连接设备前调用，否则会报错 # usb1.USBErrorAccess: LIBUSB_ERROR_ACCESS [-3]
+        return adb_commands.AdbCommands.Devices()

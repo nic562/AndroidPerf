@@ -3,6 +3,9 @@ from abc import ABCMeta
 import re
 
 from .abstract_adb import AdbInterface
+from .cpu import CPUUsageAdb
+from .memory import MemoryAdb
+from .traffic import TrafficAdb
 
 
 class AndroidDevice(object):
@@ -130,7 +133,7 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
         return rs.rfind('1 received') != -1
 
 
-class AdbProxy(AdbBase):
+class AdbProxy(AdbBase, CPUUsageAdb, MemoryAdb, TrafficAdb):
     """ADB 代理，用于衔接adb协议的不同底层实现"""
 
     def __init__(self, adb_implement: AdbInterface):
@@ -159,4 +162,7 @@ class AdbProxy(AdbBase):
 
     def pull_file(self, device_path: str, local_path: str):
         return self._impl.pull_file(device_path, local_path)
+
+    def devices(self):
+        return self._impl.devices()
 

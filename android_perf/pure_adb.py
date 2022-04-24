@@ -49,6 +49,12 @@ class PureAdb(AdbInterface):
             if not self._dev:
                 raise RuntimeError(f'No device found for [{serial}]')
             self.serial = s
+        else:
+            devs = self.devices(self.adb_client.DEVICE, return_obj=True)
+            if not devs:
+                raise RuntimeError('No devices!')
+            self._dev = devs[0]
+            self.serial = self._dev.serial
         return self._dev
 
     def disconnect(self):
