@@ -3,36 +3,44 @@ import re
 import time
 
 from .abstract_adb import AdbInterface
-from .log import default as logging
+from .data_unit import DataUnit, KB
 
 
-class TrafficInfo:
+class NetTraffic:
     """
     mobile: 12345G 移动流量
     wifi: 网关流量
     rx: 接收流量
     tx: 发送流量
-    单位：字节
     cost_ms: 指令数据获取所消耗时间，毫秒
     """
-    mobile_total: int
-    wifi_total: int
-    rx_total: int
-    tx_total: int
+    mobile_total: float = 0
+    wifi_total: float = 0
+    rx_total: float = 0
+    tx_total: float = 0
 
-    def __init__(self):
-        self.mobile_rx = 0
-        self.mobile_tx = 0
-        self.wifi_rx = 0
-        self.wifi_tx = 0
+    def __init__(self, unit: DataUnit = KB):
+        self.mobile_rx_byte = 0
+        self.mobile_tx_byte = 0
+        self.wifi_rx_byte = 0
+        self.wifi_tx_byte = 0
         self.cost_ms = 0
+        self.unit = unit
+
+    def number_format(self, v) -> float:
+        return self.unit.format(v)
 
     def compute_total(self):
-        self.mobile_total = self.mobile_rx + self.mobile_tx
-        self.wifi_total = self.mobile_rx + self.mobile_tx
-        self.rx_total = self.mobile_rx + self.wifi_rx
-        self.tx_total = self.mobile_tx + self.wifi_tx
+        self.mobile_total = self.number_format(self.mobile_rx_byte + self.mobile_tx_byte)
+        self.wifi_total = self.number_format(self.wifi_rx_byte + self.wifi_tx_byte)
+        self.rx_total = self.number_format(self.mobile_rx_byte + self.wifi_rx_byte)
+        self.tx_total = self.number_format(self.mobile_tx_byte + self.wifi_tx_byte)
         return self
+
+    def __str__(self):
+        return f'NetTraffic Unit: {self.unit}\nCost(ms): {self.cost_ms}\n' \
+               f'Mobile Total: {self.mobile_total}\nWifi Total: {self.wifi_total}\n' \
+               f'Receive Total: {self.rx_total}\nSent Total: {self.tx_total}'
 
 
 class TrafficAdb(AdbInterface, metaclass=ABCMeta):
@@ -61,14 +69,10 @@ class TrafficAdb(AdbInterface, metaclass=ABCMeta):
             return ll
 
     @staticmethod
-    def byte2kb(v: int) -> float:
-        return round(v / 1024.0, 2)
-
-    @staticmethod
     def _traffic_parse_line(rs: str):
         # 原始数据的每一行，第2个信息为接收流量，第10个信息为发送流量
         items = rs.split()
-        return items[1], items[9]
+        return int(items[1]), int(items[9])
 
     def _traffic_parse(self, rs: str, start_ms: int):
         if rs.find('No such') != -1:
@@ -77,17 +81,17 @@ class TrafficAdb(AdbInterface, metaclass=ABCMeta):
         if rs.find('error') != -1:
             raise ValueError(f'Error return: {rs}')
         end_ms = int(time.time() * 1000)
-        info = TrafficInfo()
+        info = NetTraffic()
         info.cost_ms = end_ms - start_ms
         for line in rs.split('\n'):
             if 'wlan0' in line:
                 # wifi 流量
-                info.wifi_rx, info.wifi_tx = self._traffic_parse_line(line)
+                info.wifi_rx_byte, info.wifi_tx_byte = self._traffic_parse_line(line)
             elif 'rmnet0' in line:
-                info.mobile_rx, info.mobile_tx = self._traffic_parse_line(line)
+                info.mobile_rx_byte, info.mobile_tx_byte = self._traffic_parse_line(line)
         return info.compute_total()
 
-    def get_device_traffic(self) -> TrafficInfo:
+    def get_device_traffic(self) -> NetTraffic:
         """获取设备整机流量统计
         注意：该数据为设备启动（重启后归0）后开始累计的
         """
@@ -95,41 +99,23 @@ class TrafficAdb(AdbInterface, metaclass=ABCMeta):
         rs = self.run_shell('cat /proc/net/dev', clean_wrap=True)
         return self._traffic_parse(rs, _t)
 
-    def get_process_traffic(self, pid) -> TrafficInfo:
+    def get_process_traffic(self, pid) -> NetTraffic:
         """
-        获取具体进程的流量统计，结果是从进程创建开始的累计值
-        进程文件在进程销毁后就删掉
+        注意：仅获取主进程则可表示整个App的流量
+        获取具体进程所属App的流量统计，结果是从设备启动开始开始的累计值
+        虽然进程文件在进程销毁后就删掉，但是所属应用的流量统计并不清0
         """
         _t = int(time.time() * 1000)
         rs = self.run_shell(f'cat /proc/{pid}/net/dev', clean_wrap=True)
         return self._traffic_parse(rs, _t)
 
-    def get_processes_traffic(self, process_id_list: list[int], auto_remove_miss_process=True) -> TrafficInfo:
-        """
-        每个App可能会有多个进程
-        获取目标Apps进程id列表的最新流量汇总，结果是从进程创建开始的累计值
-        :param process_id_list: App的进程列表
-        :param auto_remove_miss_process: 是否从process_id_list中清理不存在进程ID
-        :return: 当前总的目标App流量
-        """
-        miss_pid_list = []
-        total = TrafficInfo()
-        for pi in process_id_list:
-            try:
-                traffic = self.get_process_traffic(pi)
-            except KeyError as e:
-                if str(e).find('No such') != -1:
-                    logging.warning(f'process miss:{pi}')
-                    miss_pid_list.append(pi)
-                    continue
-                raise e
-            total.wifi_rx += traffic.wifi_rx
-            total.wifi_tx += traffic.wifi_tx
-            total.mobile_rx += traffic.mobile_rx
-            total.mobile_tx += traffic.mobile_tx
-            total.cost_ms += traffic.cost_ms
-
-        if auto_remove_miss_process:
-            for xp in miss_pid_list:
-                process_id_list.remove(xp)
-        return total
+    @staticmethod
+    def compute_traffic_increase(start_traffic: NetTraffic, end_traffic: NetTraffic) -> NetTraffic:
+        rs = NetTraffic()
+        rs.unit = end_traffic.unit
+        rs.cost_ms = start_traffic.cost_ms + end_traffic.cost_ms
+        rs.wifi_rx_byte = end_traffic.wifi_rx_byte - start_traffic.wifi_rx_byte
+        rs.wifi_tx_byte = end_traffic.wifi_tx_byte - start_traffic.wifi_tx_byte
+        rs.mobile_rx_byte = end_traffic.mobile_rx_byte - start_traffic.mobile_rx_byte
+        rs.mobile_tx_byte = end_traffic.mobile_tx_byte - start_traffic.mobile_tx_byte
+        return rs.compute_total()

@@ -4,6 +4,7 @@ import time
 
 from .abstract_adb import AdbInterface
 from .log import default as logging
+from .data_unit import DataUnit, KB
 
 
 class MemoryInfo:
@@ -13,7 +14,7 @@ class MemoryInfo:
     RE_NATIVE_HEAP = re.compile(r"Native Heap:\s+(\d+)")
     RE_SYSTEM = re.compile(r"System:\s+(\d+)")
 
-    def __init__(self):
+    def __init__(self, unit: DataUnit = KB):
         self.pid = -1
         self.process_name = ''
         self.total_pss = 0
@@ -21,10 +22,10 @@ class MemoryInfo:
         self.native_heap = 0
         self.system = 0
         self.cost_ms = 0
+        self.unit = unit
 
-    @staticmethod
-    def number_format(num_str: str) -> float:
-        return round(float(num_str) / 1024.0, 2)
+    def number_format(self, num_str: str) -> float:
+        return self.unit.format(float(num_str))
 
     def parse(self, rs: str, start_ms: int):
         end_ms = int(time.time() * 1000)
@@ -38,15 +39,22 @@ class MemoryInfo:
         self.cost_ms = end_ms - start_ms
         return self
 
+    def __str__(self):
+        return f'MemoryInfo Unit: {self.unit}\nCost(ms): {self.cost_ms}\n' \
+               f'Pid: {self.pid}\nProcess: {self.process_name}\n' \
+               f'Total: {self.total_pss}\nJavaHeap: {self.java_heap}\n' \
+               f'NativeHeap: {self.native_heap}\nSystem: {self.system}'
+
 
 class DeviceMemoryInfo:
     RE_ALL = re.compile(r'Mem:\s+(\d+)\s+(\d+)\s+(\d+)')
 
-    def __init__(self):
+    def __init__(self, unit: DataUnit = KB):
         self.total = 0
         self.used = 0
         self.free = 0
         self.cost_ms = 0
+        self.unit = unit
 
     def parse(self, rs: str, start_ms: int):
         end_ms = int(time.time() * 1000)
@@ -57,17 +65,20 @@ class DeviceMemoryInfo:
         self.cost_ms = end_ms - start_ms
         return self
 
+    def __str__(self):
+        return f'Unit: {self.unit}\nCost(ms): {self.cost_ms}\nTotal: {self.total}\nUsed: {self.used}\nFree: {self.free}'
+
 
 class MemoryAdb(AdbInterface, metaclass=ABCMeta):
 
-    def get_device_memory_details(self):
-        # 获取设备内存数据详情，单位kb
-        return self.run_shell('free -k')
+    def get_device_memory_details(self, unit: DataUnit):
+        """获取设备内存数据详情"""
+        return self.run_shell(f'free -{unit.flag}')
 
-    def get_device_memory(self) -> DeviceMemoryInfo:
+    def get_device_memory(self, unit: DataUnit = KB) -> DeviceMemoryInfo:
         _t = int(time.time() * 1000)
-        rs = self.get_device_memory_details()
-        return DeviceMemoryInfo().parse(rs, _t)
+        rs = self.get_device_memory_details(unit)
+        return DeviceMemoryInfo(unit).parse(rs, _t)
 
     def get_process_memory_details(self, app_bundle_or_pid: str):
         """
@@ -82,7 +93,7 @@ class MemoryAdb(AdbInterface, metaclass=ABCMeta):
             # 进程被销毁
             logging.warning(f'process miss:{app_bundle_or_pid}')
             return
-        if rs.find('MEMINFO in pid') != -1:
+        if rs.find('MEMINFO in pid') == -1:
             logging.warning('try to get MemoryInfo again!')
             return self.get_process_memory(app_bundle_or_pid)
         return MemoryInfo().parse(rs, _t)

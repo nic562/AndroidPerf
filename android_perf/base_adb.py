@@ -3,6 +3,7 @@ from abc import ABCMeta
 import re
 
 from .abstract_adb import AdbInterface
+from .app_info import AppInfo
 from .cpu import CPUUsageAdb
 from .memory import MemoryAdb
 from .traffic import TrafficAdb
@@ -21,11 +22,17 @@ class AndroidDevice(object):
 
 class AdbBase(AdbInterface, metaclass=ABCMeta):
     """扩展较多常用指令操作的adb抽象"""
+    _sdk_version: int = None
 
     RE_APP_VERSION = re.compile(r'versionName=([\w\.]+)')
 
     def go_back(self):
         return self.run_shell('input keyevent BACK')
+
+    def get_sdk_version(self) -> int:
+        if not self._sdk_version:
+            self._sdk_version = int(self.run_shell('getprop ro.build.version.sdk'))
+        return self._sdk_version
 
     def set_http_proxy(self, host_port: str):
         """
@@ -64,6 +71,9 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
             f'monkey -p {app_pkg} -c android.intent.category.LAUNCHER 1'
         return self.run_shell(m)
 
+    def start_app(self, app: AppInfo):
+        return self.launch_app(app.pkg, app.run_args)
+
     def get_app_version(self, app_bundle: str) -> str:
         rs = self.run_shell(f'pm dump {app_bundle} | grep "version"', True)
         v = self.RE_APP_VERSION.findall(rs)
@@ -80,6 +90,9 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
 
     def kill_app(self, app_bundle: str):
         return self.run_shell(f'am force-stop {app_bundle}', True)
+
+    def kill_by_app(self, app: AppInfo):
+        return self.kill_app(app.pkg)
 
     def find_processes(self, app_bundle: str) -> list:
         """
@@ -131,6 +144,12 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
     def ping(self, h: str) -> bool:
         rs = self.run_shell(f'ping -c 1 -W 1 {h}')
         return rs.rfind('1 received') != -1
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
 
 class AdbProxy(AdbBase, CPUUsageAdb, MemoryAdb, TrafficAdb):

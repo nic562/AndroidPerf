@@ -3,17 +3,14 @@ from logging import getLogger
 import time
 from urllib.parse import urlencode
 
-from .base_adb import AdbProxy as _AdbProxy
+from .base_adb import AdbProxy
 from .app_info import AppInfo
 
 logging = getLogger(__name__)
 
 
-class AdbProxy(_AdbProxy):
-    """附带一些工具库，
-    1. 可录屏并将视频上传到指定服务器地址的
-    2. 如果通过指令获取流量失败，可以试试工具库中的流量统计工具
-    """
+class AdbProxyWithTools(AdbProxy):
+    """附带一些额外Android工具操作api"""
 
     TOOLS_APP = AppInfo().simple(
         'Screen Recorder (测试工具)',
@@ -22,7 +19,17 @@ class AdbProxy(_AdbProxy):
         description='请到 [https://github.com/nic562/AndroidScreenRecorder] 下载所需工具App.'
                     '\n如果自动化运行过程中遇到问题，请检查App的授权情况，例如【通知权限】、【创建VPN权限】、【存储空间权限】等'
     )
-    NET_TRAFFIC_LOG_PATH = '/sdcard/tmp/mm.log'
+
+    def _get_tools_app_start_cmd(self):
+        return f'am start -n {self.TOOLS_APP.pkg}/{self.TOOLS_APP.run_args} '
+
+    def send_broadcast_2tools_app(self, **kv: str):
+        self.check_tools_app()
+        return self.send_broadcast(
+            f'{self.TOOLS_APP.pkg}.RemoteCallingSV',
+            f'-n {self.TOOLS_APP.pkg}/.RemoteCallingReceiver',
+            **kv
+        )
 
     def check_tools_app(self) -> bool:
         """
@@ -36,12 +43,6 @@ class AdbProxy(_AdbProxy):
         if not rs:
             raise EnvironmentError(self.TOOLS_APP.description)
 
-    def start_app(self, app: AppInfo):
-        return self.launch_app(app.pkg, app.run_args)
-
-    def kill_by_app(self, app: AppInfo):
-        return self.kill_app(app.pkg)
-
     def start_tools_app(self):
         self.check_tools_app()
         return self.start_app(self.TOOLS_APP)
@@ -49,8 +50,14 @@ class AdbProxy(_AdbProxy):
     def kill_tools_app(self):
         return self.kill_app(self.TOOLS_APP.pkg)
 
-    def _get_tools_app_start_cmd(self):
-        return f'am start -n {self.TOOLS_APP.pkg}/{self.TOOLS_APP.run_args} '
+    def close(self, kill_tools=True):
+        if kill_tools:
+            self.kill_tools_app()
+        super().close()
+
+
+class AdbProxyWithScreenRecorder(AdbProxyWithTools):
+    """附带录屏并将视频上传到指定服务器地址的api"""
 
     def update_tools_app_record_screen_settings(self, auto_stop_record: bool = True,
                                                 record_auto2back: bool = True,
@@ -106,13 +113,10 @@ class AdbProxy(_AdbProxy):
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'通知执行上传异常：`{rs}`')
 
-    def send_broadcast_2tools_app(self, **kv: str):
-        self.check_tools_app()
-        return self.send_broadcast(
-            f'{self.TOOLS_APP.pkg}.RemoteCallingSV',
-            f'-n {self.TOOLS_APP.pkg}/.RemoteCallingReceiver',
-            **kv
-        )
+
+class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
+    """如果通过Android原生文件获取流量失败，可以试试工具库中的流量统计工具"""
+    NET_TRAFFIC_LOG_PATH = '/sdcard/tmp/mm.log'
 
     def start_statistics_net_traffic(self, app: AppInfo, save2file: str):
         return self.send_broadcast_2tools_app(
@@ -196,8 +200,3 @@ class AdbProxy(_AdbProxy):
         """
         rs = self._sync_net_traffic_statistics(app, wait_seconds)
         return self.format_net_traffic_log(rs)
-
-    def close(self, kill_tools=True):
-        if kill_tools:
-            self.kill_tools_app()
-        super().close()

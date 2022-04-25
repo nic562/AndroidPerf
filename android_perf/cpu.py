@@ -128,7 +128,7 @@ class CPUUsageAdb(AdbInterface, metaclass=ABCMeta):
             return m
         raise ValueError(f'Format error: {rs}')
 
-    def get_cpu_usage(self, pid) -> AppCPU:
+    def get_process_cpu_usage(self, pid) -> AppCPU:
         """
         获取指定进程CPU占用时间
         :param pid: 进程ID
@@ -140,7 +140,7 @@ class CPUUsageAdb(AdbInterface, metaclass=ABCMeta):
         # 14：stime 该进程内核态时间
         return AppCPU(int(p[13]), int(p[14]))
 
-    def get_cpu_usage_by_app_processes(self, process_id_list: list[int], auto_remove_miss_process=True) -> AppCPU:
+    def get_processes_cpu_usage(self, process_id_list: list[int], auto_remove_miss_process=True) -> AppCPU:
         """
         每个App可能会有多个进程
         获取目标Apps进程id列表的最新CPU占用时间汇总
@@ -152,7 +152,7 @@ class CPUUsageAdb(AdbInterface, metaclass=ABCMeta):
         miss_pid_list = []
         for pi in process_id_list:
             try:
-                cpu_use = self.get_cpu_usage(pi)
+                cpu_use = self.get_process_cpu_usage(pi)
             except KeyError as e:
                 if str(e).find('No such') != -1:
                     logging.warning(f'process miss:{pi}')
