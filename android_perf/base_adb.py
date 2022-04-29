@@ -26,6 +26,11 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
 
     RE_APP_VERSION = re.compile(r'versionName=([\w\.]+)')
 
+    def input(self, s: str):
+        rs = self.run_shell(f'input text {s}')
+        if rs:
+            raise ValueError(rs)
+
     def go_back(self):
         return self.run_shell('input keyevent BACK')
 
