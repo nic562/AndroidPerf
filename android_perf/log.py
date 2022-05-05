@@ -9,6 +9,8 @@ default_stream_handler.setFormatter(Formatter('%(asctime)s - %(name)s - %(leveln
 def get_log(name: str = ''):
     lg = getLogger(f'AndroidPerf{name and f":{name}" or ""}')
     lg.addHandler(default_stream_handler)
+    lg.propagate = False
+    lg.setLevel(INFO)
     return lg
 
 

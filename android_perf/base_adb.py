@@ -31,8 +31,21 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
         if rs:
             raise ValueError(rs)
 
+    def key_event(self, event: str):
+        return self.run_shell(f'input keyevent {event}')
+
     def go_back(self):
-        return self.run_shell('input keyevent BACK')
+        return self.key_event('BACK')
+
+    def home(self):
+        return self.key_event('HOME')
+
+    def get_launch_activity(self, app_bundle: str):
+        rs = self.run_shell(f'monkey -c android.intent.category.LAUNCHER -p {app_bundle} -v -v -v 0')
+        for ll in rs.splitlines():
+            d = re.findall(rf'\+ Using main activity (\S+) \(from package {app_bundle}\)', ll)
+            if d:
+                return d[0]
 
     def get_sdk_version(self) -> int:
         if not self._sdk_version:
@@ -69,6 +82,7 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
         d.sdk_version = self.run_shell('getprop ro.build.version.sdk', True)
         d.model = self.run_shell('getprop ro.product.model', True)
         d.brand = self.run_shell('getprop ro.product.brand', True)
+        d.account_password = ''
         return d
 
     def launch_app(self, app_pkg: str, app_activity: str = None):
@@ -189,4 +203,3 @@ class AdbProxy(AdbBase, CPUUsageAdb, MemoryAdb, TrafficAdb):
 
     def devices(self):
         return self._impl.devices()
-

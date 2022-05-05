@@ -3,7 +3,7 @@ import re
 import time
 
 from .abstract_adb import AdbInterface
-from .data_unit import DataUnit, KB
+from .data_unit import DataUnit, BYTE
 
 
 class NetTraffic:
@@ -19,13 +19,13 @@ class NetTraffic:
     rx_total: float = 0
     tx_total: float = 0
 
-    def __init__(self, unit: DataUnit = KB):
+    def __init__(self, unit: DataUnit = None):
         self.mobile_rx_byte = 0
         self.mobile_tx_byte = 0
         self.wifi_rx_byte = 0
         self.wifi_tx_byte = 0
         self.cost_ms = 0
-        self.unit = unit
+        self.unit = unit or BYTE
 
     def number_format(self, v) -> float:
         return self.unit.format(v)
@@ -74,14 +74,14 @@ class TrafficAdb(AdbInterface, metaclass=ABCMeta):
         items = rs.split()
         return int(items[1]), int(items[9])
 
-    def _traffic_parse(self, rs: str, start_ms: int):
+    def _traffic_parse(self, rs: str, start_ms: int, unit: DataUnit = None):
         if rs.find('No such') != -1:
             # 进程有可能被销毁
             raise KeyError(f'Bad return: {rs}')
         if rs.find('error') != -1:
             raise ValueError(f'Error return: {rs}')
         end_ms = int(time.time() * 1000)
-        info = NetTraffic()
+        info = NetTraffic(unit=unit)
         info.cost_ms = end_ms - start_ms
         for line in rs.split('\n'):
             if 'wlan0' in line:
@@ -91,15 +91,15 @@ class TrafficAdb(AdbInterface, metaclass=ABCMeta):
                 info.mobile_rx_byte, info.mobile_tx_byte = self._traffic_parse_line(line)
         return info.compute_total()
 
-    def get_device_traffic(self) -> NetTraffic:
+    def get_device_traffic(self, unit: DataUnit = None) -> NetTraffic:
         """获取设备整机流量统计
         注意：该数据为设备启动（重启后归0）后开始累计的
         """
         _t = int(time.time() * 1000)
         rs = self.run_shell('cat /proc/net/dev', clean_wrap=True)
-        return self._traffic_parse(rs, _t)
+        return self._traffic_parse(rs, _t, unit=unit)
 
-    def get_process_traffic(self, pid) -> NetTraffic:
+    def get_process_traffic(self, pid, unit: DataUnit = None) -> NetTraffic:
         """
         注意：仅获取主进程则可表示整个App的流量
         获取具体进程所属App的流量统计，结果是从设备启动开始开始的累计值
@@ -107,11 +107,12 @@ class TrafficAdb(AdbInterface, metaclass=ABCMeta):
         """
         _t = int(time.time() * 1000)
         rs = self.run_shell(f'cat /proc/{pid}/net/dev', clean_wrap=True)
-        return self._traffic_parse(rs, _t)
+        return self._traffic_parse(rs, _t, unit=unit)
 
     @staticmethod
-    def compute_traffic_increase(start_traffic: NetTraffic, end_traffic: NetTraffic) -> NetTraffic:
-        rs = NetTraffic()
+    def compute_traffic_increase(start_traffic: NetTraffic, end_traffic: NetTraffic,
+                                 unit: DataUnit = None) -> NetTraffic:
+        rs = NetTraffic(unit)
         rs.unit = end_traffic.unit
         rs.cost_ms = start_traffic.cost_ms + end_traffic.cost_ms
         rs.wifi_rx_byte = end_traffic.wifi_rx_byte - start_traffic.wifi_rx_byte
