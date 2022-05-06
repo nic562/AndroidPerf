@@ -31,6 +31,9 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
         if rs:
             raise ValueError(rs)
 
+    def swipe(self, x0: int, y0: int, x1: int, y1: int, duration: int = 500):
+        return self.run_shell(f'input swipe {x0} {y0} {x1} {y1} {duration}')
+
     def key_event(self, event: str):
         return self.run_shell(f'input keyevent {event}')
 
