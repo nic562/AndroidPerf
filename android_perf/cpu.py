@@ -1,18 +1,20 @@
 from abc import ABCMeta
 import re
+import time
 
 from .abstract_adb import AdbInterface
 from .log import default as logging
 
 
 class CPUUsageBase:
-    def __init__(self, user: int, kernel: int):
+    def __init__(self, user: int, kernel: int, cost_ms: int):
         """
         :param user: 用户态时间
         :param kernel: 内核态时间
         """
         self.user = user
         self.kernel = kernel
+        self.cost_ms = cost_ms
 
     def __str__(self):
         return f'CPU User: {self.user}, Kernel: {self.kernel}'
@@ -24,12 +26,12 @@ class AppCPU(CPUUsageBase):
 
 
 class SysCPU(CPUUsageBase):
-    def __init__(self, user: int, kernel: int, total: int, freq: float):
+    def __init__(self, user: int, kernel: int, total: int, freq: float, cost_ms: int):
         """
         :param total: 总的CPU时间
         :param freq: CPU 当前频率占最大频率比例
         """
-        super().__init__(user, kernel)
+        super().__init__(user, kernel, cost_ms)
         self.total = total
         self.freq = freq
 
@@ -101,13 +103,15 @@ class CPUUsageAdb(AdbInterface, metaclass=ABCMeta):
         #
         # 1: 总的用户态时间
         # 3: 总的内核态时间
+        start = int(time.time() * 1000)
         t = re.split(r'\s+', self.run_shell('cat /proc/stat|head -n 1'))
         total = 0
         for x in t[1:8]:
             if not x:
                 continue
             total += int(x)
-        return SysCPU(int(t[1]), int(t[3]), total, self.get_cpu_freq())
+        end = int(time.time() * 1000)
+        return SysCPU(int(t[1]), int(t[3]), total, self.get_cpu_freq(), end - start)
 
     def get_cpu_details(self, pid: str, for_all=False):
         """
@@ -134,11 +138,13 @@ class CPUUsageAdb(AdbInterface, metaclass=ABCMeta):
         :param pid: 进程ID
         :return: (进程用户态所占CPU时间, 系统内核态所占CPU时间)
         """
-        logging.debug(f'Getting CPU usage on {pid} ...')
+        logging.debug(f'Getting CPU usage on process {pid} ...')
+        start = int(time.time() * 1000)
         p = self.get_cpu_details(pid)
+        end = int(time.time() * 1000)
         # 13：utime 该进程用户态时间
         # 14：stime 该进程内核态时间
-        return AppCPU(int(p[13]), int(p[14]))
+        return AppCPU(int(p[13]), int(p[14]), end - start)
 
     def get_processes_cpu_usage(self, process_id_list: list[int], auto_remove_miss_process=True) -> AppCPU:
         """
@@ -148,7 +154,7 @@ class CPUUsageAdb(AdbInterface, metaclass=ABCMeta):
         :param auto_remove_miss_process: 是否从process_id_list中清理不存在进程ID
         :return: 当前总的目标AppCPU时间
         """
-        total_u, total_s = 0, 0
+        total_u, total_s, cost_ms = 0, 0, 0
         miss_pid_list = []
         for pi in process_id_list:
             try:
@@ -161,10 +167,11 @@ class CPUUsageAdb(AdbInterface, metaclass=ABCMeta):
                 raise e
             total_u += cpu_use.user
             total_s += cpu_use.kernel
+            cost_ms += cpu_use.cost_ms
         if auto_remove_miss_process:
             for xp in miss_pid_list:
                 process_id_list.remove(xp)
-        return AppCPU(total_s, total_s)
+        return AppCPU(total_s, total_s, cost_ms)
 
     @staticmethod
     def compute_cpu_rate(

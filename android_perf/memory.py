@@ -14,7 +14,7 @@ class MemoryInfo:
     RE_NATIVE_HEAP = re.compile(r"Native Heap:\s+(\d+)")
     RE_SYSTEM = re.compile(r"System:\s+(\d+)")
 
-    def __init__(self, unit: DataUnit = KB):
+    def __init__(self, unit: DataUnit = None):
         self.pid = -1
         self.process_name = ''
         self.total_pss = 0
@@ -22,12 +22,12 @@ class MemoryInfo:
         self.native_heap = 0
         self.system = 0
         self.cost_ms = 0
-        self.unit = unit
+        self.unit = unit or KB
 
     def number_format(self, num_str: str) -> float:
         return self.unit.format(float(num_str))
 
-    def parse(self, rs: str, start_ms: int):
+    def _parse(self, rs: str, start_ms: int):
         end_ms = int(time.time() * 1000)
         match = self.RE_PROCESS.search(rs)
         self.pid = match.group(1)
@@ -38,6 +38,12 @@ class MemoryInfo:
         self.system = self.number_format(self.RE_SYSTEM.findall(rs)[0])
         self.cost_ms = end_ms - start_ms
         return self
+
+    def parse(self, rs: str, start_ms: int):
+        try:
+            return self._parse(rs, start_ms)
+        except IndexError:
+            logging.warning(f'Parse Memory info error:\n{rs}')
 
     def __str__(self):
         return f'MemoryInfo Unit: {self.unit}\nCost(ms): {self.cost_ms}\n' \
@@ -86,7 +92,7 @@ class MemoryAdb(AdbInterface, metaclass=ABCMeta):
         """
         return self.run_shell(f'dumpsys meminfo {app_bundle_or_pid}')
 
-    def get_process_memory(self, app_bundle_or_pid: str) -> MemoryInfo:
+    def get_process_memory(self, app_bundle_or_pid: str, unit: DataUnit = None) -> MemoryInfo:
         _t = int(time.time() * 1000)
         rs = self.get_process_memory_details(app_bundle_or_pid)
         if rs.find('No process') != -1:
@@ -96,13 +102,15 @@ class MemoryAdb(AdbInterface, metaclass=ABCMeta):
         if rs.find('MEMINFO in pid') == -1:
             logging.warning('try to get MemoryInfo again!')
             return self.get_process_memory(app_bundle_or_pid)
-        return MemoryInfo().parse(rs, _t)
+        return MemoryInfo(unit=unit).parse(rs, _t)
 
-    def get_processes_memory(self, process_id_list: list) -> MemoryInfo:
+    def get_processes_memory(self, process_id_list: list, unit: DataUnit = None) -> MemoryInfo:
         # 返回的 MemoryInfo 中进程信息为第一个进程的信息
         total: MemoryInfo = None
         for pi in process_id_list:
-            m = self.get_process_memory(pi)
+            m = self.get_process_memory(pi, unit=unit)
+            if not m:
+                continue
             if total:
                 total.total_pss += m.total_pss
                 total.java_heap += m.java_heap

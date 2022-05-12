@@ -7,6 +7,7 @@ from .app_info import AppInfo
 from .cpu import CPUUsageAdb
 from .memory import MemoryAdb
 from .traffic import TrafficAdb
+from .log import default as log
 
 
 class AndroidDevice(object):
@@ -128,7 +129,10 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
             d = re.split(r'\s+', x)
             if not d or not d[0]:
                 continue
-            ll.append((d[1], d[2], d[-1]))
+            try:
+                ll.append((d[1], d[2], d[-1]))
+            except Exception:
+                log.warning(f'格式化进程信息异常：{d}')
         return ll
 
     def find_process_ids(self, app_bundle: str) -> list:
