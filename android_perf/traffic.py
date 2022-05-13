@@ -101,7 +101,11 @@ class TrafficAdb(AdbInterface, metaclass=ABCMeta):
 
     def get_process_traffic(self, pid, unit: DataUnit = None) -> NetTraffic:
         """
-        注意：仅获取主进程则可表示整个App的流量
+        注意：大佬资料显示(未找到官方说法)这个流量统计的方法也不准确，所得数据也是整个网卡的数据，
+        因此在极少干扰的状态下（没有系统和其他App的网络通讯，通常也不可能），可表示整个App的流量。
+        这个接口容易被 pid 这个东西迷惑，实际上应该是没意义的东西
+        # 参考 https://github.com/alipay/SoloPi/issues/167
+        # http://testerhome.com/topics/31108
         获取具体进程所属App的流量统计，结果是从设备启动开始开始的累计值
         虽然进程文件在进程销毁后就删掉，但是所属应用的流量统计并不清0
         """
