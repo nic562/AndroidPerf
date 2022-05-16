@@ -59,10 +59,10 @@ class AdbProxyWithTools(AdbProxy):
 class AdbProxyWithScreenRecorder(AdbProxyWithTools):
     """附带录屏并将视频上传到指定服务器地址的api"""
 
-    def update_tools_app_record_screen_settings(self, auto_stop_record: bool = True,
-                                                record_auto2back: bool = True,
-                                                record_count_down_second: int = 5,
-                                                record_auto_delete: bool = False):
+    def update_screen_record_settings(self, auto_stop_record: bool = True,
+                                      record_auto2back: bool = True,
+                                      record_count_down_second: int = 5,
+                                      record_auto_delete: bool = False):
         logging.info(f'修改录屏工具配置:\n自动停止结束录屏【{auto_stop_record}】\n录屏倒数【{record_count_down_second}】'
                      f'\n录屏自动切到后台【{record_auto2back}】'
                      f'\n录屏视频上传完毕自动删除【{record_auto_delete}】')
@@ -74,7 +74,7 @@ class AdbProxyWithScreenRecorder(AdbProxyWithTools):
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'修改录屏设置异常：`{rs}`')
 
-    def start_record_screen(self, key: str = None):
+    def start_screen_record(self, key: str = None):
         """
         开启录屏
         :param key: 必须保证每次录屏采用不同的key，默认为None 则会自动生成。自定义的话，可以在后期进行筛查
@@ -84,10 +84,19 @@ class AdbProxyWithScreenRecorder(AdbProxyWithTools):
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'启动录屏异常：`{rs}`')
 
-    def set_tools_app_upload_api(self, title: str, url: str, method: str, upload_file_arg_name: str,
-                                 headers: dict = None, body: dict = None, body_need_encoding=False):
+    def stop_screen_record(self):
         """
-        设置上传接口
+        停止录屏。执行本方法后，记得预留一定时间(至少1秒)保证指令在工具App中正确执行以保存录屏视频文件，不要马上kill掉工具 (见 close方法)
+        :return:
+        """
+        rs = self.run_shell(f'{self._get_tools_app_start_cmd()} --es ui stopRecording')
+        if rs.find('Starting:') == -1:
+            raise RuntimeError(f'停止录屏异常：`{rs}`')
+
+    def set_screen_record_upload_api(self, title: str, url: str, method: str, upload_file_arg_name: str,
+                                     headers: dict = None, body: dict = None, body_need_encoding=False):
+        """
+        设置录屏视频上传接口
         :param title: 标题，唯一标识，可用于执行上传录屏视频时指定特定接口
         :param url: 上传接口地址
         :param method: 上传接口请求方式
@@ -106,7 +115,7 @@ class AdbProxyWithScreenRecorder(AdbProxyWithTools):
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'设置上传接口异常：`{rs}`')
 
-    def notify_to_upload_video(self, api_title: str, *video_keys: str):
+    def notify_to_upload_screen_record(self, api_title: str, *video_keys: str):
         rs = self.run_shell(f'{self._get_tools_app_start_cmd()} --es data upload '
                             f'--es apiTitle {api_title} '
                             f'--es videoKeys {",".join(video_keys)}')
@@ -200,3 +209,7 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
         """
         rs = self._sync_net_traffic_statistics(app, wait_seconds)
         return self.format_net_traffic_log(rs)
+
+
+class AdbProxyWithToolsAll(AdbProxyWithScreenRecorder, AdbProxyWithTrafficStatistics):
+    pass
