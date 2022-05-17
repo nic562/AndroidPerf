@@ -127,7 +127,19 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
     """如果通过Android原生文件获取流量失败，可以试试工具库中的流量统计工具"""
     NET_TRAFFIC_LOG_PATH = '/sdcard/tmp/mm.log'
 
-    def start_statistics_net_traffic(self, app: AppInfo, save2file: str):
+    def prepare_statistics_net_traffic(self, save2file: str = NET_TRAFFIC_LOG_PATH):
+        self.kill_tools_app()
+        try:
+            self.del_file(save2file)
+        except:
+            pass
+        self.start_tools_app()
+        while True:
+            if self.find_processes(self.TOOLS_APP.pkg):
+                break
+            time.sleep(0.1)
+
+    def start_statistics_net_traffic(self, app: AppInfo, save2file: str = NET_TRAFFIC_LOG_PATH):
         return self.send_broadcast_2tools_app(
             app=app.pkg,
             action='startNetTrafficStatistics',
@@ -140,16 +152,7 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
         )
 
     def prepare_and_start_statistics_net_traffic(self, app: AppInfo, save2file: str = NET_TRAFFIC_LOG_PATH):
-        self.kill_tools_app()
-        try:
-            self.del_file(save2file)
-        except:
-            pass
-        self.start_tools_app()
-        while True:
-            if self.find_processes(self.TOOLS_APP.pkg):
-                break
-            time.sleep(0.1)
+        self.prepare_statistics_net_traffic(save2file)
         self.start_statistics_net_traffic(app, save2file)
 
     def read_current_net_traffic(self, save2file: str = NET_TRAFFIC_LOG_PATH) -> list:
