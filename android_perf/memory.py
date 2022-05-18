@@ -25,7 +25,8 @@ class MemoryInfo:
         self.unit = unit or KB
 
     def number_format(self, num_str: str) -> float:
-        return self.unit.format(float(num_str))
+        # 内存原始数据单位为Kilobytes，
+        return self.unit.byte_exchange(float(num_str) * 1024)
 
     def _parse(self, rs: str, start_ms: int):
         end_ms = int(time.time() * 1000)

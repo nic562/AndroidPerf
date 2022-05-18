@@ -7,7 +7,12 @@ class DataUnit:
     def __str__(self):
         return self.name
 
-    def format(self, value: (int, float)) -> float:
+    def byte_exchange(self, value: (int, float)) -> float:
+        """
+        将 byte 转换为当前单位
+        :param value: 单位为byte的数据
+        :return:
+        """
         if self.name == KB.name:
             f = 1
         elif self.name == MB.name:

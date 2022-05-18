@@ -111,8 +111,9 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
             # App运行时可能会启动很多进程，每次测试之前重新读一次进程列表
             memory = self.get_memory_usage(pid_list=pl, unit=memory_unit)
             curr_g, curr_a = self.get_cpu_usage(pid_list=pl)
-        logging.debug(f'Time cost(ms)\ncpu-system: {curr_g.cost_ms}\n'
-                      f'cpu-app: {curr_a.cost_ms}\nmemory: {memory.cost_ms}')
+        logging.debug(f'System CPU:\n{curr_g}')
+        logging.debug(f'App CPU:\n{curr_a}')
+        logging.debug(f'App Memory:\n{memory}')
         rs[int(now * 1000)] = {'cpu_g': curr_g, 'cpu_a': curr_a, 'memory': memory.total_pss}
 
     @abc.abstractmethod
@@ -188,25 +189,30 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         """
         raise NotImplementedError
 
-    def start_screen_record(self, key: str = None, record_wait_seconds=0):
+    def start_screen_record(self, key: str = None, record_wait_seconds=0, auto_delete=True):
         """
         开启录屏
         :param key: 视频唯一表示，方便查找对其进行特定操作，例如指定要上传特定的视频。可空。
         :param record_wait_seconds: 自动录屏停止时间，默认为0则不自动停止
+        :param auto_delete: 设置工具，完成上传后自动删除视频
         :return:
         """
         # 如果录屏后马上上传，会影响手机的性能，建议先进行录屏，再进行上传，以提高整体运行效率。
         assert self.app
         if record_wait_seconds:
             self.adb.update_screen_record_settings(
-                auto_stop_record=True, record_count_down_second=record_wait_seconds)
+                auto_stop_record=True, record_count_down_second=record_wait_seconds,
+                record_auto_delete=auto_delete
+            )
         else:
             self.adb.update_screen_record_settings(
-                auto_stop_record=False
+                auto_stop_record=False,
+                record_auto_delete=auto_delete
             )
         self.adb.start_screen_record(key)
         time.sleep(0.5)  # 等待工具响应
         if self.apply_screen_record_permission():
+            logging.info('录屏授权完成且成功开启录屏！')
             self.on_start_screen_record()  # 这里涉及到UI的操作，延时可能比较长，不通UI框架延时不同
             if record_wait_seconds:
                 time.sleep(record_wait_seconds)
@@ -214,6 +220,7 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
     def stop_screen_record(self):
         # 如果没有设置自动停止录屏，需手动调用停止录屏
         self.adb.stop_screen_record()
+        logging.info('结束录屏！')
 
     def check_app_netflow_in_threshold(self, max_check_second=60, rx_byte_threshold=1,
                                        tx_byte_threshold=1, limit_seconds=5) -> bool:

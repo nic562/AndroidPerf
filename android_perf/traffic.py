@@ -28,7 +28,7 @@ class NetTraffic:
         self.unit = unit or BYTE
 
     def number_format(self, v) -> float:
-        return self.unit.format(v)
+        return self.unit.byte_exchange(v)
 
     def compute_total(self):
         self.mobile_total = self.number_format(self.mobile_rx_byte + self.mobile_tx_byte)
@@ -101,7 +101,7 @@ class TrafficAdb(AdbInterface, metaclass=ABCMeta):
 
     def get_process_traffic(self, pid, unit: DataUnit = None) -> NetTraffic:
         """
-        注意：大佬资料显示(未找到官方说法)这个流量统计的方法也不准确，所得数据也是整个网卡的数据，
+        注意：大量资料显示(未找到官方说法)这个流量统计的方法也不准确，所得数据也是整个网卡的数据，
         因此在极少干扰的状态下（没有系统和其他App的网络通讯，通常也不可能），可表示整个App的流量。
         这个接口容易被 pid 这个东西迷惑，实际上应该是没意义的东西
         # 参考 https://github.com/alipay/SoloPi/issues/167
