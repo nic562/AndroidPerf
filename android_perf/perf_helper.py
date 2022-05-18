@@ -163,15 +163,15 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
 
     def start_test_netflow(self, listen_seconds: int = 10) -> dict:
         assert self.app
-        logging.info(f'即将对 <{self.app}> 进行流量监测，持续 [{listen_seconds}] 秒...')
         data = dict(timestamp=time.time(), net_up=[], net_down=[])
-        self.adb.prepare_statistics_net_traffic()
+        self.adb.prepare_and_start_statistics_net_traffic(self.app)
+        logging.info(f'开始对 <{self.app}> 进行流量监测，持续 [{listen_seconds}] 秒...')
         self.adb.go_back()
         time.sleep(0.1)
         self.on_start_test_netflow()
-        self.adb.start_statistics_net_traffic(self.app)
         time.sleep(listen_seconds)
         net = self.adb.finish2format_statistics_net_traffic()
+        net = net[-listen_seconds:]
         for n in net:
             data['net_up'].append(n['up'])
             data['net_down'].append(n['down'])
@@ -238,7 +238,6 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         time.sleep(0.05)
         self.adb.go_back()
         try:
-            ready = False
             latest = None
             for i in range(max_check_second):
                 # 最多持续检测n秒，每1秒读一次数据
@@ -246,16 +245,19 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
                 latest = self.adb.read_current_net_traffic()
                 if len(latest) < limit_seconds:
                     continue
+                ready = 0
                 for j in range(limit_seconds):
                     line = latest[-j - 1]
-                    ready = line['up'] < tx_byte_threshold and line['down'] < rx_byte_threshold
-                if ready:
+                    ok = line['up'] < tx_byte_threshold and line['down'] < rx_byte_threshold
+                    if ok:
+                        ready += 1
+                if ready == limit_seconds:
                     logging.info(f'在{i + 1}秒后，设备连续{limit_seconds}秒'
                                  f'接收流量小于{rx_byte_threshold}byte/s，发送流量小于{tx_byte_threshold}byte/s')
                     return True
 
             logging.warning(f'{max_check_second}秒后，{self.app}'
-                            f'接收流量仍然大于{rx_byte_threshold}byte/s，发送流量仍然大于{tx_byte_threshold}byte/s。'
+                            f'最近{limit_seconds}秒，接收流量仍然大于{rx_byte_threshold}byte/s，或发送流量仍然大于{tx_byte_threshold}byte/s。'
                             f'流量检测无法通过，请校对检测结果与阈值\n')
             for x in latest:
                 logging.warning(x)

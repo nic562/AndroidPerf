@@ -1,12 +1,10 @@
 # coding=utf8
-from logging import getLogger
 import time
 from urllib.parse import urlencode
 
 from .base_adb import AdbProxy
 from .app_info import AppInfo
-
-logging = getLogger(__name__)
+from .log import default as logging
 
 
 class AdbProxyWithTools(AdbProxy):
@@ -173,7 +171,9 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
         return rs
 
     def finish2format_statistics_net_traffic(self, save2file: str = NET_TRAFFIC_LOG_PATH) -> list:
-        return self.format_net_traffic_log(self.finish_statistics_net_traffic(save2file))
+        rs = self.finish_statistics_net_traffic(save2file)
+        logging.debug(f'Read File[{save2file}] result:\n{rs}')
+        return self.format_net_traffic_log(rs)
 
     @staticmethod
     def format_net_traffic_log(s: str) -> list:
@@ -191,9 +191,9 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
         :param app: 目标App
         :param wait_seconds: 抓取时长，秒
         :return: 返回监测工具输出日志
-        """
         # 获取结果格式,每行为1秒内的数据:
         # 第N秒\t下载字节数\t上传字节数
+        """
         self.kill_by_app(app)
         self.prepare_and_start_statistics_net_traffic(app)
         time.sleep(0.1)
