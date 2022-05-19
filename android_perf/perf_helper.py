@@ -79,6 +79,15 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
             return
         self.on_test_cpu_memory(current_second, max_listen_seconds, self._compute_cpu_memory(raw_data, data))
 
+    @staticmethod
+    def _check_cpu_memory_data(idx: int, d: dict) -> bool:
+        ok = True
+        for k, v in d.items():
+            if v is None:
+                logging.debug(f'第{idx}秒 {k}数据未完成采集！')
+                ok = False
+        return ok
+
     def _compute_cpu_memory(self, raw_data: dict, data: dict):
         # 多个线程读取性能数据，计算时需重新按时序排列
         sort_data = sorted(raw_data.items(), key=lambda x: x[0])
@@ -88,9 +97,13 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
             if idx == 0:
                 continue
             f_d = sort_data[idx - 1][1]
+            if not self._check_cpu_memory_data(idx - 1, f_d):
+                continue
             _d = d[1]
+            if not self._check_cpu_memory_data(idx, _d):
+                continue
             cpu, _ = self.adb.compute_cpu_rate(f_d['cpu_g'], _d['cpu_g'], f_d['cpu_a'], _d['cpu_a'])
-            memory = _d['memory']
+            memory = _d['memory'].total_pss
             logging.debug('current CPU:[%.2f], MEM:[%.2f]', cpu * 100, memory)
             cpu_list.append(cpu)
             memory_list.append(memory)
@@ -98,23 +111,31 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         data['memory'] = memory_list
         return data
 
-    def _async_run_get_cpu_memory(self, rs: dict, main_pid=None, memory_unit: DataUnit = None):
+    def _async_run_get_cpu(self, rs: dict, main_pid=None, pid_list=None):
+        assert main_pid or pid_list
         # 这部分性能读取有一定延时，需在线程中运行，否则会应用主进程计时的准确性
-        now = time.time()
         if self.main_process_only:
             if not main_pid:
                 raise ValueError('当前测试内容为针对App主进程测试，请在`on_start_cpu_memory_test`函数中返回主进程id')
-            memory = self.get_memory_usage(main_pid, unit=memory_unit)
             curr_g, curr_a = self.get_cpu_usage(main_pid)
         else:
-            pl = self.adb.find_process_ids(self.app.pkg)
-            # App运行时可能会启动很多进程，每次测试之前重新读一次进程列表
-            memory = self.get_memory_usage(pid_list=pl, unit=memory_unit)
-            curr_g, curr_a = self.get_cpu_usage(pid_list=pl)
+            curr_g, curr_a = self.get_cpu_usage(pid_list=pid_list)
         logging.debug(f'System CPU:\n{curr_g}')
         logging.debug(f'App CPU:\n{curr_a}')
+        rs['cpu_g'] = curr_g
+        rs['cpu_a'] = curr_a
+
+    def _async_run_get_memory(self, rs: dict, main_pid=None, pid_list=None, unit: DataUnit = None):
+        assert main_pid or pid_list
+        # 这部分性能读取有一定延时，需在线程中运行，否则会应用主进程计时的准确性
+        if self.main_process_only:
+            if not main_pid:
+                raise ValueError('当前测试内容为针对App主进程测试，请在`on_start_cpu_memory_test`函数中返回主进程id')
+            memory = self.get_memory_usage(main_pid, unit=unit)
+        else:
+            memory = self.get_memory_usage(pid_list=pid_list, unit=unit)
         logging.debug(f'App Memory:\n{memory}')
-        rs[int(now * 1000)] = {'cpu_g': curr_g, 'cpu_a': curr_a, 'memory': memory.total_pss}
+        rs['memory'] = memory
 
     @abc.abstractmethod
     def on_start_cpu_memory_test(self) -> str:
@@ -131,14 +152,26 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         """
         raise NotImplementedError
 
-    def start_test_cpu_memory(self, min_wait_seconds: int = 10, max_listen_seconds: int = 60) -> dict:
+    def _work_on_cpu_memory(self, final_data: dict, tmp_data: dict, idx: int, main_pid=None,
+                            min_wait_seconds: int = 0, max_listen_seconds: int = 60):
+        # App运行时可能会启动很多进程，每次测试之前重新读一次进程列表
+        idx_data = {'cpu_g': None, 'cpu_a': None, 'memory': None}
+        tmp_data[idx + 1] = idx_data
+        pl = main_pid is None and self.adb.find_process_ids(self.app.pkg) or None
+        self._th_pool.putRequest(WorkRequest(self._async_run_get_cpu, args=(idx_data, main_pid, pl)))
+        self._th_pool.putRequest(WorkRequest(self._async_run_get_memory, args=(idx_data, main_pid, pl, MB)))
+        self._th_pool.putRequest(WorkRequest(self._async_on_test_cpu_memory, args=(idx, max_listen_seconds,
+                                                                                   min_wait_seconds,
+                                                                                   tmp_data, final_data)))
+
+    def start_test_cpu_memory(self, min_wait_seconds: int = 0, max_listen_seconds: int = 60) -> dict:
         assert self.app
         logging.info(f'即将在 <{self.app}>\'上的 '
                      f'[{self.main_process_only and "主" or "所有"}] '
                      f'进程测试 CPU/Memory 持续监听最多 [{max_listen_seconds}] 秒...')
         data = dict(timestamp=time.time(), cpu=[], memory=[], keep=True)
         tmp_data = {
-            int(time.time() * 1000): {'cpu_g': self.adb.get_cpu_global(), 'cpu_a': AppCPU(0, 0, 0), 'memory': 0}
+            0: {'cpu_g': self.adb.get_cpu_global(), 'cpu_a': AppCPU(0, 0, 0), 'memory': 0}
             # 多线程执行每一秒的性能数据读取，但是每个线程执行过程中可能会出现失败而进行重试读取，有一定延时现象，因此需要以该线程第一次读取发起读取的时间作为键，保证数据的正确先后顺序
             # 获取未启动应用时的系统CPU使用时间，将目标App CPU使用时间初始为0
         }
@@ -148,10 +181,9 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
                 break
             # 1秒读一次数据，耗时操作放在线程中执行，以确保读取数据的操作为每秒执行一次
             time.sleep(1)
-            self._th_pool.putRequest(WorkRequest(self._async_run_get_cpu_memory, args=(tmp_data, main_pid, MB)))
-            self._th_pool.putRequest(WorkRequest(self._async_on_test_cpu_memory, args=(i, max_listen_seconds,
-                                                                                       min_wait_seconds,
-                                                                                       tmp_data, data)))
+            self._th_pool.putRequest(WorkRequest(self._work_on_cpu_memory, args=(
+                data, tmp_data, i, main_pid, min_wait_seconds, max_listen_seconds
+            )))
         self._th_pool.wait()
         # 等待所有线程结束
         return data
