@@ -232,7 +232,7 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         """
         # 如果录屏后马上上传，会影响手机的性能，建议先进行录屏，再进行上传，以提高整体运行效率。
         assert self.app
-        if record_wait_seconds:
+        if record_wait_seconds > 0:
             self.adb.update_screen_record_settings(
                 auto_stop_record=True, record_count_down_second=record_wait_seconds,
                 record_auto_delete=auto_delete
@@ -247,7 +247,7 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         if self.apply_screen_record_permission():
             logging.info('录屏授权完成且成功开启录屏！')
             self.on_start_screen_record()  # 这里涉及到UI的操作，延时可能比较长，不同UI框架延时不同
-            if record_wait_seconds:
+            if record_wait_seconds > 0:
                 time.sleep(record_wait_seconds)
 
     def stop_screen_record(self):
