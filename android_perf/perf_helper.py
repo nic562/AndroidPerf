@@ -194,6 +194,7 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     def start_test_netflow(self, listen_seconds: int = 10) -> dict:
+        # 开始流量监测
         assert self.app
         data = dict(timestamp=time.time(), net_up=[], net_down=[])
         self.adb.prepare_and_start_statistics_net_traffic(self.app)
@@ -245,7 +246,7 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         time.sleep(0.5)  # 等待工具响应
         if self.apply_screen_record_permission():
             logging.info('录屏授权完成且成功开启录屏！')
-            self.on_start_screen_record()  # 这里涉及到UI的操作，延时可能比较长，不通UI框架延时不同
+            self.on_start_screen_record()  # 这里涉及到UI的操作，延时可能比较长，不同UI框架延时不同
             if record_wait_seconds:
                 time.sleep(record_wait_seconds)
 
@@ -354,43 +355,36 @@ class AndroidPerfBaseHelperWithWhistle(AndroidPerfBaseHelper, metaclass=abc.ABCM
         # 在进行网络接口统计开始时执行的操作
         raise NotImplementedError
 
-    def start_test_req_count(self, listen_seconds: int = 10, checking_app_threshold_before_start=True,
-                             device_rx_byte_threshold=1,
-                             device_tx_byte_threshold=1,
-                             max_app_threshold_checking_second=60,
-                             limit_app_threshold_keep_second=5):
+    def start_test_req_count(self, listen_seconds: int = 10):
         """
         开始http/https网络请求统计
         :param listen_seconds: 统计时长，秒，如果指定大于0 的值，则按照统计时间自动停止，否则需要手动调用 stop_test_req_count进行关闭
-        :param checking_app_threshold_before_start: 执行 on_start_test_req_count 前是否检查App流量状态
-        :param device_rx_byte_threshold:  设备接收流量阈值，如果开始前要检查App流量状态，将按此阈值判断接收流量
-        :param device_tx_byte_threshold:  设备发送流量阈值，如果开始前要检查App流量状态，将按此阈值判断发送流量
-        :param max_app_threshold_checking_second:  检查流量状态，最长检查时间
-        :param limit_app_threshold_keep_second: App流量保持阈值状态持续最少秒数
         :return: 无。因为数据将通过whistle服务进行统计和上传，所以这里并无返回值
         """
         assert self.app
         logging.info(f'即将对 <{self.app}> 进行网络请求接口监测'
                      f' [{listen_seconds}] 秒...')
-        if checking_app_threshold_before_start and not self.check_app_netflow_in_threshold(
-                max_app_threshold_checking_second, device_rx_byte_threshold, device_tx_byte_threshold,
-                limit_seconds=limit_app_threshold_keep_second):
-            # 等待设备流量低于阈值再开始抓包
-            return
         time.sleep(0.05)
         logging.info(f'正在配置手机代理服务地址({self.whistle_address})...')
         self.adb.set_http_proxy(self.whistle_address)
         is_error = False
         try:
-            update_statistics_settings(
+            ok, resp = update_statistics_settings(
                 self.whistle_address,
                 self.get_whistle_statistics_settings(),
                 auto_stop=listen_seconds > 0,
-                timeout=listen_seconds
-            )  # 配置抓包上传数据，开启10秒后自动关闭抓包
-            active_statistics_status(self.whistle_address)  # 激活
+                timeout=listen_seconds or 1  # 这里timeout 若为0 会返回失败
+            )  # 配置抓包上传数据，开启[timeout]秒后自动关闭抓包
+            if not ok or resp['ec'] != 0:
+                raise Exception(f'向代理服务器发送配置失败: {resp["em"]}')
+            logging.info('向代理服务器发送配置成功！')
+            ok, resp = active_statistics_status(self.whistle_address)  # 激活
+            if not ok or resp['ec'] != 0:
+                raise Exception(f'激活抓包服务失败: {resp["em"]}')
+            logging.info('激活抓包服务: %s %s', ok, resp)
             self.on_start_test_req_count()
             if listen_seconds:
+                # 等待自动关闭抓包
                 time.sleep(listen_seconds + 5)  # 等待足够的时间
         except:
             # 出现任何异常时，也要保证清理代理服务环境
@@ -403,7 +397,10 @@ class AndroidPerfBaseHelperWithWhistle(AndroidPerfBaseHelper, metaclass=abc.ABCM
 
     def stop_test_req_count(self):
         try:
-            active_statistics_status(self.whistle_address, active=False)  # 关闭
+            ok, resp = active_statistics_status(self.whistle_address, active=False)  # 关闭
+            if not ok or resp['ec'] != 0:
+                raise Exception(f'关闭抓包服务失败: {resp["em"]}')
+            logging.info('关闭抓包服务：%s %s', ok, resp)
         finally:
             self.reset_whistle_server_and_close_device_http_proxy()
 

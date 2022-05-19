@@ -1,13 +1,14 @@
 # coding=utf8
 # 基于whistle代理插件（https://github.com/nic562/whistle.statistics）的http请求统计
 from urllib import request
+import simplejson
 
 
 def _call_proxy_request(whistle_address: str, uri, data: str = None):
     resp = request.urlopen(f'http://{whistle_address}{uri}', data=data and data.encode('utf8') or None, timeout=10)
     body = resp.read().decode('utf8')
     if resp.status == 200:
-        return True, body
+        return True, simplejson.loads(body)
     return False, body
 
 
