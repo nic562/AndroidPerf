@@ -383,7 +383,7 @@ class AndroidPerfBaseHelperWithWhistle(AndroidPerfBaseHelper, metaclass=abc.ABCM
                 raise Exception(f'激活抓包服务失败: {resp["em"]}')
             logging.info('激活抓包服务: %s %s', ok, resp)
             self.on_start_test_req_count()
-            if listen_seconds:
+            if listen_seconds > 0:
                 # 等待自动关闭抓包
                 time.sleep(listen_seconds + 5)  # 等待足够的时间
         except:
@@ -391,7 +391,7 @@ class AndroidPerfBaseHelperWithWhistle(AndroidPerfBaseHelper, metaclass=abc.ABCM
             is_error = True
             raise
         finally:
-            if is_error or listen_seconds:
+            if is_error or listen_seconds > 0:
                 # 如果是设置自动停止的 或者发生异常时，则自动清理环境
                 self.reset_whistle_server_and_close_device_http_proxy()
 
