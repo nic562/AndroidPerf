@@ -194,20 +194,27 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     def start_test_netflow(self, listen_seconds: int = 10) -> dict:
-        # 开始流量监测
+        """开始网络流量监测
+        :param listen_seconds 持续监测的秒数，大于0时自动停止，否则需要手动调用 stop_test_netflow
+        """
         assert self.app
-        data = dict(timestamp=time.time(), net_up=[], net_down=[])
         self.adb.prepare_and_start_statistics_net_traffic(self.app)
-        logging.info(f'开始对 <{self.app}> 进行流量监测，持续 [{listen_seconds}] 秒...')
+        logging.info(f'开始对 <{self.app}> 进行网络流量监测，持续 [{listen_seconds}] 秒...')
         self.adb.go_back()
         time.sleep(0.1)
         self.on_start_test_netflow()
-        time.sleep(listen_seconds)
+        if listen_seconds > 0:
+            time.sleep(listen_seconds)
+            return self.stop_test_netflow(listen_seconds)
+
+    def stop_test_netflow(self, listen_seconds: int) -> dict:
         net = self.adb.finish2format_statistics_net_traffic()
         net = net[-listen_seconds:]
+        data = dict(timestamp=time.time(), net_up=[], net_down=[])
         for n in net:
             data['net_up'].append(n['up'])
             data['net_down'].append(n['down'])
+        logging.info('关闭流量监测！')
         return data
 
     @abc.abstractmethod
@@ -338,7 +345,9 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
 
 
 class AndroidPerfBaseHelperWithWhistle(AndroidPerfBaseHelper, metaclass=abc.ABCMeta):
-    # 实现基于whistle 和 whistle.statistics插件的http/https 网络请求统计
+    """实现基于whistle 和 whistle.statistics插件的http/https 网络请求统计
+    见 https://github.com/nic562/whistle.statistics
+    """
 
     def __init__(self, adb: AdbProxyWithToolsAll, whistle_address: str, main_process_only=False):
         super().__init__(adb, main_process_only)
@@ -347,7 +356,7 @@ class AndroidPerfBaseHelperWithWhistle(AndroidPerfBaseHelper, metaclass=abc.ABCM
 
     @abc.abstractmethod
     def get_whistle_statistics_settings(self) -> str:
-        # 获取 whistle.statistics插件的配置，参考https://github.com/nic562/whistle.statistics
+        """获取 whistle.statistics插件的配置，参考https://github.com/nic562/whistle.statistics"""
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -362,8 +371,7 @@ class AndroidPerfBaseHelperWithWhistle(AndroidPerfBaseHelper, metaclass=abc.ABCM
         :return: 无。因为数据将通过whistle服务进行统计和上传，所以这里并无返回值
         """
         assert self.app
-        logging.info(f'即将对 <{self.app}> 进行网络请求接口监测'
-                     f' [{listen_seconds}] 秒...')
+        logging.info(f'即将对 <{self.app}> 进行网络请求监测持续 [{listen_seconds}](小于等于0时不自动停止) 秒...')
         time.sleep(0.05)
         logging.info(f'正在配置手机代理服务地址({self.whistle_address})...')
         self.adb.set_http_proxy(self.whistle_address)
