@@ -33,10 +33,10 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
     def set_app(self, app: AppInfo):
         self.app = app
 
-    def launch_app(self):
+    def launch_app(self, activity: str = None):
         assert self.app
         logging.info(f'启动{self.app}')
-        self.adb.start_app(self.app)
+        self.adb.launch_app(self.app.pkg, activity)
 
     def kill_app(self):
         assert self.app
@@ -142,7 +142,7 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
         """当即将开始CPU，内存测试时执行以下操作：[启动待测App]
         若测试的内容是针对主进程的，则必须在此函数返回启动后的待测App的主进程
         参考：
-        # self.adb.start_app(self.app)
+        # self.adb.launch_by_app(self.app)
         # while True:
         #     time.sleep(0.008)
         #     try:

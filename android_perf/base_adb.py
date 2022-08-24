@@ -44,6 +44,10 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
     def home(self):
         return self.key_event('HOME')
 
+    def task_manager(self):
+        # 打开任务管理器
+        return self.key_event('187')
+
     def get_launch_activity(self, app_bundle: str):
         rs = self.run_shell(f'monkey -c android.intent.category.LAUNCHER -p {app_bundle} -v -v -v 0')
         for ll in rs.splitlines():
@@ -89,13 +93,23 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
         d.account_password = ''
         return d
 
-    def launch_app(self, app_pkg: str, app_activity: str = None):
-        m = app_activity and f'am start {app_pkg}/{app_activity}' or \
+    def launch_app(self, app_pkg: str, activity: str = None):
+        m = activity and f'am start {app_pkg}/{activity}' or \
             f'monkey -p {app_pkg} -c android.intent.category.LAUNCHER 1'
         return self.run_shell(m)
 
-    def start_app(self, app: AppInfo):
-        return self.launch_app(app.pkg, app.run_args)
+    def launch_app_with_args(self, app_pkg: str, activity: str, *args: str):
+        # 带附加参数
+        ss = [activity]
+        ss.extend(args)
+        s = ' '.join(ss)
+        return self.run_shell(f'am start -n {app_pkg}/{s}')
+
+    def launch_by_app_with_args(self, app: AppInfo, *args: str):
+        return self.launch_app_with_args(app.pkg, app.run_args, *args)
+
+    def launch_by_app(self, app: AppInfo, activity: str = None):
+        return self.launch_app(app.pkg, activity or app.run_args)
 
     def get_app_version(self, app_bundle: str) -> str:
         rs = self.run_shell(f'pm dump {app_bundle} | grep "version"', True)

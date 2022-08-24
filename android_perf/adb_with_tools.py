@@ -18,9 +18,6 @@ class AdbProxyWithTools(AdbProxy):
                     '\n如果自动化运行过程中遇到问题，请检查App的授权情况，例如【通知权限】、【创建VPN权限】、【存储空间权限】等'
     )
 
-    def _get_tools_app_start_cmd(self):
-        return f'am start -n {self.TOOLS_APP.pkg}/{self.TOOLS_APP.run_args} '
-
     def send_broadcast_2tools_app(self, **kv: str):
         self.check_tools_app()
         return self.send_broadcast(
@@ -43,7 +40,7 @@ class AdbProxyWithTools(AdbProxy):
 
     def start_tools_app(self):
         self.check_tools_app()
-        return self.start_app(self.TOOLS_APP)
+        return self.launch_by_app(self.TOOLS_APP)
 
     def kill_tools_app(self):
         return self.kill_app(self.TOOLS_APP.pkg)
@@ -64,11 +61,12 @@ class AdbProxyWithScreenRecorder(AdbProxyWithTools):
         logging.info(f'修改录屏工具配置:\n自动停止结束录屏【{auto_stop_record}】\n录屏倒数【{record_count_down_second}】'
                      f'\n录屏自动切到后台【{record_auto2back}】'
                      f'\n录屏视频上传完毕自动删除【{record_auto_delete}】')
-        rs = self.run_shell(f'{self._get_tools_app_start_cmd()}'
-                            f'--es setting 1 --ez auto_2back {str(record_auto2back).lower()} '
-                            f'--ez auto_stop_record {str(auto_stop_record).lower()} '
-                            f'--ei record_count_down_second {record_count_down_second} '
-                            f'--ez record_auto_delete {str(record_auto_delete).lower()} ')
+        rs = self.launch_by_app_with_args(
+            self.TOOLS_APP,
+            f'--es setting 1 --ez auto_2back {str(record_auto2back).lower()}',
+            f'--ez auto_stop_record {str(auto_stop_record).lower()}',
+            f'--ei record_count_down_second {record_count_down_second}',
+            f'--ez record_auto_delete {str(record_auto_delete).lower()}')
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'修改录屏设置异常：`{rs}`')
 
@@ -78,7 +76,9 @@ class AdbProxyWithScreenRecorder(AdbProxyWithTools):
         :param key: 必须保证每次录屏采用不同的key，默认为None 则会自动生成。自定义的话，可以在后期进行筛查
         :return:
         """
-        rs = self.run_shell(f'{self._get_tools_app_start_cmd()} --es ui startRecord --es key {key}')
+        rs = self.launch_by_app_with_args(
+            self.TOOLS_APP,
+            f'--es ui startRecord --es key {key}')
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'启动录屏异常：`{rs}`')
 
@@ -87,7 +87,9 @@ class AdbProxyWithScreenRecorder(AdbProxyWithTools):
         停止录屏。执行本方法后，记得预留一定时间(至少1秒)保证指令在工具App中正确执行以保存录屏视频文件，不要马上kill掉工具 (见 close方法)
         :return:
         """
-        rs = self.run_shell(f'{self._get_tools_app_start_cmd()} --es ui stopRecording')
+        rs = self.launch_by_app_with_args(
+            self.TOOLS_APP,
+            f'--es ui stopRecording')
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'停止录屏异常：`{rs}`')
 
@@ -105,30 +107,40 @@ class AdbProxyWithScreenRecorder(AdbProxyWithTools):
         """
         hds = f'--es header {urlencode(headers)}'.replace("&", r"\&") if headers else ''
         bds = f'--es body {urlencode(body)}'.replace("&", r"\&") if body else ''
-        cmd = (f'{self._get_tools_app_start_cmd()} --es data api '
-               f'--es title {title} --es url {url} --es method {method} '
-               f'--es uploadFileArgName {upload_file_arg_name} '
-               f'--ez isBodyEncoding {str(body_need_encoding).lower()} {hds} {bds}')
-        rs = self.run_shell(cmd)
+        rs = self.launch_by_app_with_args(
+            self.TOOLS_APP,
+            f'--es data api',
+            f'--es title {title} --es url {url} --es method {method}',
+            f'--es uploadFileArgName {upload_file_arg_name}',
+            f'--ez isBodyEncoding {str(body_need_encoding).lower()} {hds} {bds}'
+        )
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'设置上传接口异常：`{rs}`')
 
     def notify_to_upload_screen_record(self, api_title: str, *video_keys: str):
-        rs = self.run_shell(f'{self._get_tools_app_start_cmd()} --es data upload '
-                            f'--es apiTitle {api_title} '
-                            f'--es videoKeys {",".join(video_keys)}')
+        rs = self.launch_by_app_with_args(
+            self.TOOLS_APP,
+            f'--es data upload',
+            f'--es apiTitle {api_title}',
+            f'--es videoKeys {",".join(video_keys)}')
         if rs.find('Starting:') == -1:
             raise RuntimeError(f'通知执行上传异常：`{rs}`')
 
 
 class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
     """如果通过Android原生文件获取流量失败，可以试试工具库中的流量统计工具"""
-    NET_TRAFFIC_LOG_PATH = '/sdcard/tmp/mm.log'
 
-    def prepare_statistics_net_traffic(self, save2file: str = NET_TRAFFIC_LOG_PATH):
+    @property
+    def NET_TRAFFIC_LOG_PATH(self):
+        if self.get_device_info().brand == 'HUAWEI':
+            # harmony 系统的app 除了自身目录之外，没有写sdcard其他目录的权限，但却对外开放了读权限
+            return f'/sdcard/Android/data/{self.TOOLS_APP.pkg}/files/tmp/net_test.log'
+        return '/sdcard/tmp/mm.log'
+
+    def prepare_statistics_net_traffic(self, save2file: str = None):
         self.kill_tools_app()
         try:
-            self.del_file(save2file)
+            self.del_file(save2file or self.NET_TRAFFIC_LOG_PATH)
         except:
             pass
         self.start_tools_app()
@@ -137,11 +149,11 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
                 break
             time.sleep(0.1)
 
-    def start_statistics_net_traffic(self, app: AppInfo, save2file: str = NET_TRAFFIC_LOG_PATH):
+    def start_statistics_net_traffic(self, app: AppInfo, save2file: str = None):
         return self.send_broadcast_2tools_app(
             app=app.pkg,
             action='startNetTrafficStatistics',
-            save2File=save2file
+            save2File=save2file or self.NET_TRAFFIC_LOG_PATH
         )
 
     def stop_statistics_net_traffic(self):
@@ -149,16 +161,18 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
             action='stopNetTrafficStatistics'
         )
 
-    def prepare_and_start_statistics_net_traffic(self, app: AppInfo, save2file: str = NET_TRAFFIC_LOG_PATH):
+    def prepare_and_start_statistics_net_traffic(self, app: AppInfo, save2file: str = None):
         self.prepare_statistics_net_traffic(save2file)
         self.start_statistics_net_traffic(app, save2file)
 
-    def read_current_net_traffic(self, save2file: str = NET_TRAFFIC_LOG_PATH) -> list:
-        return self.format_net_traffic_log(self.cat_file(save2file))
+    def read_current_net_traffic(self, save2file: str = None) -> list:
+        return self.format_net_traffic_log(self.cat_file(save2file or self.NET_TRAFFIC_LOG_PATH))
 
-    def finish_statistics_net_traffic(self, save2file: str = NET_TRAFFIC_LOG_PATH) -> str:
+    def finish_statistics_net_traffic(self, save2file: str = None) -> str:
         self.stop_statistics_net_traffic()
         time.sleep(0.1)
+        save2file = save2file or self.NET_TRAFFIC_LOG_PATH
+        logging.debug(f'Read File[{save2file}]...')
         rs = self.cat_file(save2file)
         self.del_file(save2file)
         self.kill_tools_app()
@@ -170,9 +184,9 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
         time.sleep(0.1)
         return rs
 
-    def finish2format_statistics_net_traffic(self, save2file: str = NET_TRAFFIC_LOG_PATH) -> list:
+    def finish2format_statistics_net_traffic(self, save2file: str = None) -> list:
         rs = self.finish_statistics_net_traffic(save2file)
-        logging.debug(f'Read File[{save2file}] result:\n{rs}')
+        logging.debug(f'Result:\n{rs}')
         return self.format_net_traffic_log(rs)
 
     @staticmethod
@@ -197,7 +211,7 @@ class AdbProxyWithTrafficStatistics(AdbProxyWithTools):
         self.kill_by_app(app)
         self.prepare_and_start_statistics_net_traffic(app)
         time.sleep(0.1)
-        self.start_app(app)
+        self.launch_by_app(app)
         time.sleep(wait_seconds)
         rs = self.finish_statistics_net_traffic()
         self.kill_by_app(app)

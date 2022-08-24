@@ -10,11 +10,12 @@ from .data_unit import DataUnit, KB
 class MemoryInfo:
     RE_PROCESS = re.compile(r'\*\* MEMINFO in pid (\d+) \[(\S+)] \*\*')
     RE_TOTAL_PSS = re.compile(r'TOTAL PSS:\s+(\d+)')
+    RE_TOTAL_PSS_HARMONY = re.compile(r'TOTAL:\s+(\d+)')
     RE_JAVA_HEAP = re.compile(r"Java Heap:\s+(\d+)")
     RE_NATIVE_HEAP = re.compile(r"Native Heap:\s+(\d+)")
     RE_SYSTEM = re.compile(r"System:\s+(\d+)")
 
-    def __init__(self, unit: DataUnit = None):
+    def __init__(self, unit: DataUnit = None, is_harmony_os=False):
         self.pid = -1
         self.process_name = ''
         self.total_pss = 0
@@ -23,6 +24,7 @@ class MemoryInfo:
         self.system = 0
         self.cost_ms = 0
         self.unit = unit or KB
+        self.is_harmony_os = is_harmony_os
 
     def number_format(self, num_str: str) -> float:
         # 内存原始数据单位为Kilobytes，
@@ -33,7 +35,10 @@ class MemoryInfo:
         match = self.RE_PROCESS.search(rs)
         self.pid = match.group(1)
         self.process_name = match.group(2)
-        self.total_pss = self.number_format(self.RE_TOTAL_PSS.findall(rs)[0])
+        if self.is_harmony_os:
+            self.total_pss = self.number_format(self.RE_TOTAL_PSS_HARMONY.findall(rs)[0])
+        else:
+            self.total_pss = self.number_format(self.RE_TOTAL_PSS.findall(rs)[0])
         self.java_heap = self.number_format(self.RE_JAVA_HEAP.findall(rs)[0])
         self.native_heap = self.number_format(self.RE_NATIVE_HEAP.findall(rs)[0])
         self.system = self.number_format(self.RE_SYSTEM.findall(rs)[0])
@@ -78,6 +83,10 @@ class DeviceMemoryInfo:
 
 class MemoryAdb(AdbInterface, metaclass=ABCMeta):
 
+    @property
+    def __is_harmony(self):
+        return self.run_shell('getprop ro.product.brand', True) == 'HUAWEI'
+
     def get_device_memory_details(self, unit: DataUnit):
         """获取设备内存数据详情"""
         return self.run_shell(f'free -{unit.flag}')
@@ -103,7 +112,7 @@ class MemoryAdb(AdbInterface, metaclass=ABCMeta):
         if rs.find('MEMINFO in pid') == -1:
             logging.warning('try to get MemoryInfo again!')
             return self.get_process_memory(app_bundle_or_pid)
-        return MemoryInfo(unit=unit).parse(rs, _t)
+        return MemoryInfo(unit=unit, is_harmony_os=self.__is_harmony).parse(rs, _t)
 
     def get_processes_memory(self, process_id_list: list, unit: DataUnit = None) -> MemoryInfo:
         # 返回的 MemoryInfo 中进程信息为第一个进程的信息
