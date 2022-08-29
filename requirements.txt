@@ -1,7 +1,13 @@
 python-rsa
 threadpool~=1.3.2
-adb @ git+https://github.com/nic562/python-adb@1.3.1#egg=adb
-pure-python-adb @ git+https://github.com/nic562/pure-python-adb@0.3.1#egg=pure-python-adb
-setuptools~=62.1.0
-adb~=1.3.1
 simplejson~=3.17.6
+setuptools
+
+
+# adb @ git+https://github.com/nic562/python-adb@1.3.1#egg=adb
+adb~=1.3.0.1
+# you can see [https://github.com/nic562/python-adb/releases/tag/1.3.0.1]
+
+# pure-python-adb @ git+https://github.com/nic562/pure-python-adb@0.3.1#egg=pure-python-adb
+pure-python-adb~=0.3.1
+# You can see [https://github.com/nic562/pure-python-adb/releases/tag/0.3.1]

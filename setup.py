@@ -13,11 +13,11 @@ setup(
     name='AndroidPerf',
     packages=['android_perf'],
     version=__version__,
-    author='NicholasChen',
+    author='Nicholas Chen',
     author_email='nic562@gmail.com',
     license='Apache License 2.0',
     url='https://github.com/nic562/AndroidPerf',
-    description='基于python-adb、pure-python-adb等',
+    description='基于python-adb、pure-python-adb等采集性能',
     keywords=['android', 'adb', 'pure-python-adb'],
     install_requires=parse_requirements('requirements.txt'),
     classifiers=[
