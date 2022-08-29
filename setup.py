@@ -19,7 +19,12 @@ setup(
     url='https://github.com/nic562/AndroidPerf',
     description='基于python-adb、pure-python-adb等采集性能',
     keywords=['android', 'adb', 'pure-python-adb'],
+    data_files=['requirements.txt'],
     install_requires=parse_requirements('requirements.txt'),
+    extras_require={
+        'py-adb': ['adb~=1.3.0.1'],
+        'pure-adb': ['pure-python-adb~=0.3.1']
+    },
     classifiers=[
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
