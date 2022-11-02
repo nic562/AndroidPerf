@@ -1,7 +1,5 @@
 from setuptools import setup, find_packages
 
-from android_perf import __version__
-
 
 def parse_requirements(filename):
     """ load requirements from a pip requirements file. (replacing from pip.req import parse_requirements)"""
@@ -12,7 +10,7 @@ def parse_requirements(filename):
 setup(
     name='AndroidPerf',
     packages=find_packages(),
-    version=__version__,
+    version='0.4',
     author='Nicholas Chen',
     author_email='nic562@gmail.com',
     license='Apache License 2.0',
