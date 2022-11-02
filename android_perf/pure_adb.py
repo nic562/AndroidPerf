@@ -5,7 +5,7 @@ from ppadb.client import Client as AdbClient
 from ppadb.device import Device
 from ppadb import InstallError
 
-from .base_adb import AdbInterface
+from .base_adb import AdbInterface, AdbProxy
 from .log import default as logging
 
 
@@ -20,6 +20,10 @@ class PureAdb(AdbInterface):
         self.start_server()
         self.adb_client = AdbClient()
         self.connect(serial)
+
+    @classmethod
+    def get_proxy(cls, serial=None) -> AdbProxy:
+        return AdbProxy(cls(serial))
 
     def get_device(self) -> Device:
         if self._dev:

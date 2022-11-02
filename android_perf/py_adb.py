@@ -5,7 +5,7 @@ from adb import adb_commands
 from adb import sign_pythonrsa
 from adb.adb_protocol import InvalidResponseError, InvalidCommandError
 
-from .base_adb import AdbInterface
+from .base_adb import AdbInterface, AdbProxy
 from .log import default as logging
 
 
@@ -15,6 +15,10 @@ class ReadConnectError(Exception):
 
 class PyAdb(AdbInterface):
     """python-adb的封装"""
+
+    @classmethod
+    def get_proxy(cls, serial=None) -> AdbProxy:
+        return AdbProxy(cls(serial))
 
     @staticmethod
     def my_load_rsa_key_path(file_path):

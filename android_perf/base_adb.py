@@ -26,6 +26,7 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
     _sdk_version: int = None
 
     RE_APP_VERSION = re.compile(r'versionName=([\w\.]+)')
+    RE_DUMPSYS_ACTIVITIES = re.compile(r'\{\w+ \w+ ([\w\.]+)/.+\}')
 
     def input(self, s: str):
         rs = self.run_shell(f'input text {s}')
@@ -130,6 +131,22 @@ class AdbBase(AdbInterface, metaclass=ABCMeta):
 
     def kill_by_app(self, app: AppInfo):
         return self.kill_app(app.pkg)
+
+    def dump_running_activities(self):
+        ats = self.run_shell('dumpsys activity activities | grep Activities')
+        if not ats:
+            log.warning('未有正在运行的Activity')
+            return
+        pkg = self.RE_DUMPSYS_ACTIVITIES.findall(ats, re.M)
+        if not pkg:
+            log.warning('解析Activities 失败：%s', ats)
+            return
+        return pkg
+
+    def force_stop_running_activities(self):
+        for p in self.dump_running_activities():
+            log.warning('杀掉应用：%s', p)
+            self.kill_app(p)
 
     def find_processes(self, app_bundle: str) -> list:
         """

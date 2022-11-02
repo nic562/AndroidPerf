@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 from android_perf import __version__
 
@@ -11,7 +11,7 @@ def parse_requirements(filename):
 
 setup(
     name='AndroidPerf',
-    packages=['android_perf'],
+    packages=find_packages(),
     version=__version__,
     author='Nicholas Chen',
     author_email='nic562@gmail.com',
