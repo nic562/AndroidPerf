@@ -10,7 +10,7 @@ def parse_requirements(filename):
 setup(
     name='AndroidPerf',
     packages=find_packages(),
-    version='0.4',
+    version='0.5',
     author='Nicholas Chen',
     author_email='nic562@gmail.com',
     license='Apache License 2.0',
