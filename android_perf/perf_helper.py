@@ -176,16 +176,22 @@ class AndroidPerfBaseHelper(metaclass=abc.ABCMeta):
             # 获取未启动应用时的系统CPU使用时间，将目标App CPU使用时间初始为0
         }
         main_pid = self.on_start_cpu_memory_test()
-        for i in range(max_listen_seconds):
-            if not data['keep']:
-                break
-            # 1秒读一次数据，耗时操作放在线程中执行，以确保读取数据的操作为每秒执行一次
-            time.sleep(1)
-            self._th_pool.putRequest(WorkRequest(self._work_on_cpu_memory, args=(
-                data, tmp_data, i, main_pid, min_wait_seconds, max_listen_seconds
-            )))
-        self._th_pool.wait()
-        # 等待所有线程结束
+        try:
+            for i in range(max_listen_seconds):
+                if not data['keep']:
+                    break
+                # 1秒读一次数据，耗时操作放在线程中执行，以确保读取数据的操作为每秒执行一次
+                time.sleep(1)
+                if i > 0:
+                    latest_data = tmp_data[i-1]
+                    if latest_data['cpu_a'] is None or latest_data['memory'] is None:
+                        raise ValueError(f'【{self.app.pkg}】进程已不存在，无法继续读取相关CPU、内存信息')
+                self._th_pool.putRequest(WorkRequest(self._work_on_cpu_memory, args=(
+                    data, tmp_data, i, main_pid, min_wait_seconds, max_listen_seconds
+                )))
+        finally:
+            self._th_pool.wait()
+            # 等待所有线程结束
         return data
 
     @abc.abstractmethod
